@@ -370,6 +370,10 @@ uint8_t BSP_LCD_Init(void)
     // Enable DSI.
      __HAL_DSI_ENABLE(&hdsi_discovery);
 
+     	 /*************************/
+         /* LCD POWER ON SEQUENCE */
+         /*************************/
+
      // Manufacture Command Set Page 0
      HAL_DSI_ShortWrite(&hdsi_discovery, 0, DSI_DCS_SHORT_PKT_WRITE_P1, 0xFE, 0x01);
      HAL_DSI_ShortWrite(&hdsi_discovery, 0, DSI_DCS_SHORT_PKT_WRITE_P1, 0x0A, 0xF0);
@@ -1590,18 +1594,14 @@ void HAL_DSI_EndOfRefreshCallback(DSI_HandleTypeDef *hdsi)
   */
 static void LCD_PowerOn(void)
 {
-
-	  GPIO_InitTypeDef gpioInit = {0};
-
 		  __HAL_RCC_GPIOB_CLK_ENABLE();
-		  __HAL_RCC_GPIOC_CLK_ENABLE();
 		  __HAL_RCC_GPIOH_CLK_ENABLE();
-		  __HAL_RCC_GPIOI_CLK_ENABLE();
-		  __HAL_RCC_GPIOG_CLK_ENABLE();
-		  __HAL_RCC_GPIOF_CLK_ENABLE();
+
+		  GPIO_InitTypeDef gpioInit = {0};
+
 		  BSP_IO_ConfigPin(IO_PIN_9, IO_MODE_OUTPUT);
 		  BSP_IO_WritePin(IO_PIN_9, GPIO_PIN_SET);
-	HAL_Delay(120);
+
 		  // PB1, DSI_BL_CTRL
 		  gpioInit.Pin       = GPIO_PIN_1;
 		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
@@ -1610,13 +1610,6 @@ static void LCD_PowerOn(void)
 
 		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
 
-		 //  PB1, DSI_BL_CTRL
-		 	  gpioInit.Pin       = GPIO_PIN_11;
-		 	  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
-		 	  gpioInit.Speed     = GPIO_SPEED_FREQ_LOW;
-		 	  HAL_GPIO_Init(GPIOF, &gpioInit);
-
-		   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11, GPIO_PIN_SET);
 		  // PB14, LVST1_EN_TS
 		  gpioInit.Pin       = GPIO_PIN_14;
 		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
@@ -1633,20 +1626,6 @@ static void LCD_PowerOn(void)
 
 		  HAL_GPIO_WritePin(GPIOH, GPIO_PIN_14, GPIO_PIN_SET);
 
-	//	  gpioInit.Pin       = GPIO_PIN_13;
-	//		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
-	//		  gpioInit.Speed     = GPIO_SPEED_FREQ_LOW;
-	//		  HAL_GPIO_Init(GPIOB, &gpioInit);
-	//
-	//		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
-	//
-	//		  // PB15
-	//		  gpioInit.Pin       = GPIO_PIN_15;
-	//		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
-	//		  gpioInit.Speed     = GPIO_SPEED_FREQ_LOW;
-	//		  HAL_GPIO_Init(GPIOB, &gpioInit);
-	//
-	//		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
 		 #if 0
 		  // PB13
 		  gpioInit.Pin       = GPIO_PIN_13;
@@ -1717,9 +1696,6 @@ static void LCD_PowerOn(void)
 #else /* USE_STM32L4R9I_DISCO_REVA || USE_STM32L4R9I_DISCO_REVB */
   /* Configure the GPIO connected to DSI_RESET signal */
   BSP_IO_ConfigPin(IO_PIN_10, IO_MODE_OUTPUT);
-//  /* Activate DSI_RESET (active low) */
-//     BSP_IO_WritePin(IO_PIN_10, GPIO_PIN_RESET);
-//     HAL_Delay(50);
   /* Desactivate DSI_RESET */
   BSP_IO_WritePin(IO_PIN_10, GPIO_PIN_SET);
 #endif /* USE_STM32L4R9I_DISCO_REVA || USE_STM32L4R9I_DISCO_REVB */
