@@ -4,6 +4,7 @@
   * @author  MCD Application Team
   * @brief   This example code shows how to use the STM32L4R9I_DISCOVERY BSP Drivers
   ******************************************************************************
+  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; Copyright (c) 2017 STMicroelectronics.
@@ -20,6 +21,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stlogo.h"
+//#include "lv_examples/lv_tests/lv_test_obj/lv_test_obj.h"
+#include "lvgl/lvgl.h"
+//#include "theButton.h"
+#include "lv_conf.h"
+
 
 /** @addtogroup STM32L4xx_HAL_Examples
   * @{
@@ -46,7 +52,6 @@
 /* Private variables ---------------------------------------------------------*/
 uint8_t DemoIndex = 0;
 __IO uint8_t NbLoop = 1;
-
 #if defined(LCD_DIMMING)
 RTC_HandleTypeDef RTCHandle;
 __IO uint32_t display_dimmed     = 0;     /* LCD dimming status */
@@ -60,7 +65,7 @@ uint32_t brightness = 0;
 extern DSI_HandleTypeDef    hdsi_discovery;
 #endif /* defined(LCD_DIMMING) */
 
-extern uint32_t AudioPlayback;
+//extern uint32_t AudioPlayback;
 
 /* Components Initialization Status */
 FlagStatus JoyInitialized = RESET;
@@ -69,13 +74,17 @@ FlagStatus TsInitialized  = RESET;
 FlagStatus LedInitialized = RESET;
 
 /* Player Pause/Resume Status */
-__IO uint32_t PauseResumeStatus = IDLE_STATUS;
+//__IO uint32_t PauseResumeStatus = IDLE_STATUS;
 
 /* Counter for Sel Joystick pressed */
 __IO uint32_t PressCount = 0;
 
 /* Joystick Status */
 __IO JOYState_TypeDef JoyState = JOY_NONE;
+
+
+/* TouchScreen Status */
+//static TS_StateTypeDef  TS_State;
 
 /* MFX Interrupt Status */
 __IO FlagStatus MfxItOccurred = RESET;
@@ -88,21 +97,21 @@ __IO uint32_t IddEvent = 0;
 #if (DEBUG_ON == 1)
 __IO uint32_t IddEventCounter = 0;
 #endif
-
+void my_disp_flushs(lv_disp_t * disp, const lv_area_t * area, lv_color_t * color_p);
 /* Volume of the audio playback */
 /* Initial volume level (from 0% (Mute) to 100% (Max)) */
-__IO uint8_t Volume = 60;
-__IO uint8_t VolumeChange = 0;
+//__IO uint8_t Volume = 60;
+//__IO uint8_t VolumeChange = 0;
 
 /* Private function prototypes -----------------------------------------------*/
 static void Display_DemoDescription(void);
 
 BSP_DemoTypedef  BSP_examples[]=
 {
-	{LCD_demo, "LCD", 0},
-//  {Led_demo, "LED", 0},
-//  {Joystick_demo, "JOYSTICK", 0},
-//   {Idd_demo, "IDD", 0},
+  {Joystick_demo, "JOYSTICK", 0},
+  {Led_demo, "LED", 0},
+  {LCD_demo, "LCD", 0},
+//  {Idd_demo, "IDD", 0},
 //  {Touchscreen_demo, "TOUCHSCREEN", 0},
 //  {OSPI_NOR_demo, "OctoSPI NOR", 0},
 //  {SD_demo, "SD", 0},
@@ -130,47 +139,46 @@ int main(void)
      */
   HAL_Init();
 
+  lv_init();
+  tft_init();
+  // tft_init();
   /* Configure the system clock */
   SystemClock_Config();
 
   /* System common Hardware components initialization (Leds, joystick, LCD and touchscreen) */
   SystemHardwareInit();
 
-  while(BSP_LCD_IsFrameBufferAvailable() != LCD_OK);
-  Display_DemoDescription();
-  BSP_LCD_Refresh();
+ // while(BSP_LCD_IsFrameBufferAvailable() != LCD_OK);
+//  Display_DemoDescription();
+
+
 
 #if defined(LCD_DIMMING)
   Dimming_Timer_Enable(&RTCHandle);
 #endif
-   
+
+
+HAL_Delay(10);
+  lv_obj_t * scr = lv_obj_create(NULL, NULL);
+  				lv_scr_load(scr);                                   /*Load the screen*/
+  	lv_obj_t * btn = lv_btn_create(scr, NULL);
+  	lv_obj_set_pos(btn, 135, 100);
+  	lv_obj_set_size(btn, 70, 50);
+//  	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+//  	BSP_LCD_Clear(LCD_COLOR_WHITE);
+  	BSP_LCD_Refresh();
+
   /* Wait For User inputs */
   while (1)
   {
-    if(MfxItOccurred == SET)
-    {
-      Mfx_Event();
-      if(JoyState == JOY_RIGHT)
-      {
-        BSP_examples[DemoIndex++].DemoFunc();
-
-        if(DemoIndex >= COUNT_OF_EXAMPLE(BSP_examples))
-        {
-          /* Increment number of loops which be used by EEPROM example */
-          NbLoop++;
-          DemoIndex = 0;
-        }
-      }
-      while(BSP_LCD_IsFrameBufferAvailable() != LCD_OK);
-      Display_DemoDescription();
-      BSP_LCD_Refresh();
-    }
 
 
+  lv_task_handler();
+//  lv_tick_inc(2);
+ HAL_Delay(1);
 
   }
 }
-
 /**
   * @brief  System Clock Configuration
   *         The system Clock is configured as follows :
@@ -190,6 +198,7 @@ int main(void)
   * @param  None
   * @retval None
   */
+
 void SystemClock_Config(void)
 {
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
@@ -364,7 +373,7 @@ void SystemHardwareInit(void)
     LcdInitialized = SET;
   }
 
-//  /* Initialize the TouchScreen */
+  /* Initialize the TouchScreen */
 //  if(TsInitialized != SET)
 //  {
 //    /* Initialize the TouchScreen */
@@ -411,11 +420,11 @@ void SystemHardwareDeInit(void)
   }
 
   /* DeInitialize the TouchScreen */
-  if(TsInitialized != RESET)
-  {
-    BSP_TS_DeInit();
-    TsInitialized = RESET;
-  }
+//  if(TsInitialized != RESET)
+//  {
+//    BSP_TS_DeInit();
+//    TsInitialized = RESET;
+//  }
 
   /* Disable remaining clocks */
   __HAL_RCC_PWR_CLK_DISABLE();
@@ -482,43 +491,44 @@ void SystemRtcBackupWrite(uint32_t SaveIndex)
   * @param  None
   * @retval None
   */
-static void Display_DemoDescription(void)
-{
-  char desc[50];
 
-  /* Set LCD Foreground Layer  */
-  BSP_LCD_SelectLayer(LTDC_ACTIVE_LAYER);
-
-  BSP_LCD_SetFont(&LCD_DEFAULT_FONT);
-
-  /* Clear the LCD */
-  BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
-  BSP_LCD_Clear(LCD_COLOR_WHITE);
-
-  /* Set the LCD Text Color */
-  BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);
-
-  /* Display LCD messages */
-  BSP_LCD_DisplayStringAt(0, 50, (uint8_t *)"STM32L4R9I BSP", CENTER_MODE);
-  BSP_LCD_DisplayStringAt(0, 75, (uint8_t *)"Drivers examples", CENTER_MODE);
-
-  /* Draw Bitmap */
-  BSP_LCD_DrawBitmap((BSP_LCD_GetXSize() - 80)/2, 105, (uint8_t *)stlogo);
-
-  BSP_LCD_SetFont(&Font16);
-  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()- 100, (uint8_t *)"Copyright (c)", CENTER_MODE);
-  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()- 70, (uint8_t *)"STMicroelectronics 2017", CENTER_MODE);
-
-  BSP_LCD_SetFont(&Font16);
-  BSP_LCD_SetTextColor(LCD_COLOR_BLUE);
-  BSP_LCD_FillRect(0, BSP_LCD_GetYSize()/2, BSP_LCD_GetXSize(), 80);
-  BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
-  BSP_LCD_SetBackColor(LCD_COLOR_BLUE);
-  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize() / 2 + 10, (uint8_t *)"Press Joystick right button", CENTER_MODE);
-  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()/2 + 25, (uint8_t *)"to start :", CENTER_MODE);
-  sprintf(desc,"%s example", BSP_examples[DemoIndex].DemoName);
-  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()/2 + 45, (uint8_t *)desc, CENTER_MODE);
-}
+//static void Display_DemoDescription(void)
+//{
+//  char desc[50];
+//
+//  /* Set LCD Foreground Layer  */
+//  BSP_LCD_SelectLayer(LTDC_ACTIVE_LAYER);
+//
+//  BSP_LCD_SetFont(&LCD_DEFAULT_FONT);
+//
+//  /* Clear the LCD */
+//  BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+//  BSP_LCD_Clear(LCD_COLOR_WHITE);
+//
+//  /* Set the LCD Text Color */
+//  BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);
+//
+//  /* Display LCD messages */
+//  BSP_LCD_DisplayStringAt(0, 50, (uint8_t *)"STM32L4R9I BSP", CENTER_MODE);
+//  BSP_LCD_DisplayStringAt(0, 75, (uint8_t *)"Drivers examples", CENTER_MODE);
+//
+//  /* Draw Bitmap */
+//  BSP_LCD_DrawBitmap((BSP_LCD_GetXSize() - 80)/2, 105, (uint8_t *)stlogo);
+//
+//  BSP_LCD_SetFont(&Font16);
+//  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()- 100, (uint8_t *)"Copyright (c)", CENTER_MODE);
+//  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()- 70, (uint8_t *)"STMicroelectronics 2017", CENTER_MODE);
+//
+//  BSP_LCD_SetFont(&Font16);
+//  BSP_LCD_SetTextColor(LCD_COLOR_BLUE);
+//  BSP_LCD_FillRect(0, BSP_LCD_GetYSize()/2, BSP_LCD_GetXSize(), 80);
+//  BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+//  BSP_LCD_SetBackColor(LCD_COLOR_BLUE);
+//  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize() / 2 + 10, (uint8_t *)"Press Joystick down button", CENTER_MODE);
+//  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()/2 + 25, (uint8_t *)"to start :", CENTER_MODE);
+//  sprintf(desc,"%s example", BSP_examples[DemoIndex].DemoName);
+//  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()/2 + 45, (uint8_t *)desc, CENTER_MODE);
+//}
 
 /**
   * @brief converts a 32bit unsined int into ASCII
@@ -567,22 +577,22 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   else if(GPIO_Pin == SEL_JOY_PIN)
   {
     JoyState = JOY_SEL;
-    if(AudioPlayback == 1)
-    {
-      /* SEL is used to pause and resume the audio playback */
-      if (PressCount == 1)
-      {
-        /* Resume playing Wave status */
-        PauseResumeStatus = RESUME_STATUS;
-        PressCount = 0;
-      }
-      else
-      {
-        /* Pause playing Wave status */
-        PauseResumeStatus = PAUSE_STATUS;
-        PressCount = 1;
-      }
-    }
+//    if(AudioPlayback == 1)
+//    {
+//      /* SEL is used to pause and resume the audio playback */
+//      if (PressCount == 1)
+//      {
+//        /* Resume playing Wave status */
+//        PauseResumeStatus = RESUME_STATUS;
+//        PressCount = 0;
+//      }
+//      else
+//      {
+//        /* Pause playing Wave status */
+//        PauseResumeStatus = PAUSE_STATUS;
+//        PressCount = 1;
+//      }
+//    }
   }
   else
   {
@@ -628,30 +638,30 @@ void Mfx_Event(void)
       else if(JoystickStatus == UP_JOY_PIN)
       {
         JoyState = JOY_UP;
-        if(AudioPlayback == 1)
-        {
-          /* UP is used to increment the volume of the audio playback */
-          Volume ++;
-          if (Volume > 100)
-          {
-            Volume = 100;
-          }
-          VolumeChange = 1;
-        }
+//        if(AudioPlayback == 1)
+//        {
+//          /* UP is used to increment the volume of the audio playback */
+//          Volume ++;
+//          if (Volume > 100)
+//          {
+//            Volume = 100;
+//          }
+//          VolumeChange = 1;
+//        }
       }
       else if(JoystickStatus == DOWN_JOY_PIN)
       {
         JoyState = JOY_DOWN;
-        if(AudioPlayback == 1)
-        {
-          /* DOWN is used to decrement the volume of the audio playback */
-          Volume --;
-          if ((int8_t)Volume < 50)
-          {
-            Volume = 50;
-          }
-          VolumeChange = 1;
-        }
+//        if(AudioPlayback == 1)
+//        {
+//          /* DOWN is used to decrement the volume of the audio playback */
+//          Volume --;
+//          if ((int8_t)Volume < 50)
+//          {
+//            Volume = 50;
+//          }
+//          VolumeChange = 1;
+//        }
       }
       else
       {
