@@ -75,6 +75,10 @@
 #include "../../../Utilities/Fonts/font16.c"
 #include "../../../Utilities/Fonts/font12.c"
 #include "../../../Utilities/Fonts/font8.c"
+#include "lv_conf.h"
+#include "lvgl/src/lv_hal/lv_hal.h"
+#include "stm32l4r9i_discovery_psram.h"
+#include "lvgl/lvgl.h"
 
 /** @addtogroup BSP
   * @{
@@ -112,6 +116,7 @@ DMA2D_HandleTypeDef  hdma2d_discovery;
 /** @defgroup STM32L4R9I_DISCOVERY_LCD_Private_Variables Private Variables
   * @{
   */
+
 /* LCD/PSRAM initialization status sharing the same power source */
 extern uint32_t bsp_lcd_initialized;
 extern uint32_t bsp_psram_initialized;
@@ -146,7 +151,9 @@ DSI_HandleTypeDef    hdsi_discovery;
 /**
   * @}
   */
-
+/* For LittlevGL */
+static void my_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p);
+static void CopyBuffer(uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize);
 /** @defgroup STM32L4R9I_DISCOVERY_LCD_Private_FunctionPrototypes Private FunctionPrototypes
   * @{
   */
@@ -163,6 +170,93 @@ static void LL_ConvertLineToARGB8888(void * pSrc, void *pDst, uint32_t xSize, ui
 /** @defgroup STM32L4R9I_DISCOVERY_LCD_Exported_Functions Exported Functions
   * @{
   */
+
+void tft_init(void) {
+	/* Deactivate speculative/cache access to first FMC Bank to save FMC bandwidth */
+		FMC_Bank1_R->BTCR[0] = 0x000030D2;
+	BSP_PSRAM_Init();
+	BSP_LCD_Init();
+	BSP_LCD_SelectLayer(0);
+	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+	BSP_LCD_Clear(LCD_COLOR_WHITE);
+	  if ( HAL_DSI_ShortWrite(&hdsi_discovery, 0, DSI_DCS_SHORT_PKT_WRITE_P0, DSI_SET_DISPLAY_ON, 0x0) != HAL_OK )
+	       {
+	         return (LCD_ERROR);
+	       }
+
+	static lv_disp_buf_t disp_buf;
+	static lv_color_t buf1[LV_HOR_RES_MAX * 30];
+	static lv_color_t buf2[LV_HOR_RES_MAX * 30];
+	lv_disp_buf_init(&disp_buf, buf1,buf2, LV_HOR_RES_MAX * 30);
+
+
+	lv_disp_drv_t disp_drv;                 /*A variable to hold the drivers. Can be local variable*/
+	lv_disp_drv_init(&disp_drv);            /*Basic initialization*/
+	disp_drv.buffer = &disp_buf;            /*Set an initialized buffer*/
+	disp_drv.flush_cb = my_flush_cb;        /*Set a flush callback to draw to the display*/
+	lv_disp_drv_register(&disp_drv); /*Register the driver and save the created display objects*/
+
+
+}
+
+static void my_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
+//	LL_FillBuffer(ActiveLayer, (uint32_t *)(hltdc_discovery.LayerCfg[ActiveLayer].FBStartAdress), 390, 390, 378,(uint32_t) color_p);
+//	LL_ConvertLineToARGB8888((uint32_t*) color_p, (uint32_t *)(hltdc_discovery.LayerCfg[ActiveLayer].FBStartAdress), area->x1, DMA2D_INPUT_ARGB8888);
+	CopyBuffer((uint32_t*) color_p, (uint32_t *)(hltdc_discovery.LayerCfg[ActiveLayer].FBStartAdress), area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area));
+	BSP_LCD_Refresh();
+	lv_disp_flush_ready(drv);
+}
+
+
+/**
+  * @brief  Copy an input RGB888 buffer to output RGB888 with output offset
+  * @param  pSrc: Pointer to source buffer
+  * @param  pDst: Output color
+  * @param  x: Start x position
+  * @param  y: Start y position
+  * @param  xsize: width
+  * @param  ysize: height
+  * @param  ColorMode: Input color mode
+  * @retval None
+  */
+
+static void CopyBuffer(uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize)
+{
+  uint32_t destination = (uint32_t)pDst + (y * 390 + x) * 4;
+  uint32_t source      = (uint32_t)pSrc;
+
+  hdma2d_discovery.Instance = DMA2D;
+
+  /*##-1- Configure the DMA2D Mode, Color Mode and output offset #############*/
+  hdma2d_discovery.Init.Mode           = DMA2D_M2M;
+  hdma2d_discovery.Init.ColorMode      = DMA2D_OUTPUT_ARGB8888;
+  hdma2d_discovery.Init.OutputOffset   = 768-390;
+  hdma2d_discovery.Init.AlphaInverted  = DMA2D_REGULAR_ALPHA;  /* No Output Alpha Inversion */
+  hdma2d_discovery.Init.RedBlueSwap    = DMA2D_RB_REGULAR;     /* No Output Red & Blue swap */
+  hdma2d_discovery.Init.BytesSwap      = DMA2D_BYTES_REGULAR;  /* Regular output byte order */
+  hdma2d_discovery.Init.LineOffsetMode = DMA2D_LOM_PIXELS;     /* Pixel mode                */
+
+  /*##-2- Foreground Configuration ###########################################*/
+  hdma2d_discovery.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
+  hdma2d_discovery.LayerCfg[1].InputOffset    = 0;
+  hdma2d_discovery.LayerCfg[1].AlphaMode      = DMA2D_NO_MODIF_ALPHA;
+  hdma2d_discovery.LayerCfg[1].InputAlpha     = 0xFF;                /* Not used */
+  hdma2d_discovery.LayerCfg[1].RedBlueSwap    = DMA2D_RB_SWAP; //DMA2D_RB_REGULAR;    /* No ForeGround Red/Blue swap */
+  hdma2d_discovery.LayerCfg[1].AlphaInverted  = DMA2D_REGULAR_ALPHA; /* No ForeGround Alpha inversion */
+
+  /* DMA2D Initialization */
+  if(HAL_DMA2D_Init(&hdma2d_discovery) == HAL_OK)
+  {
+    if(HAL_DMA2D_ConfigLayer(&hdma2d_discovery, 1) == HAL_OK)
+    {
+      if (HAL_DMA2D_Start(&hdma2d_discovery, source, destination, xsize, ysize) == HAL_OK)
+      {
+        /* Polling For DMA transfer */
+        HAL_DMA2D_PollForTransfer(&hdma2d_discovery, 100);
+      }
+    }
+  }
+}
 
 /**
   * @brief  Initialize the DSI LCD.
@@ -229,6 +323,7 @@ uint8_t BSP_LCD_Init(void)
     /* LTDC CONFIGURATION */
     /**********************/
 
+
     /* LTDC initialization */
     hltdc_discovery.Instance = LTDC;
     __HAL_LTDC_RESET_HANDLE_STATE(&hltdc_discovery);
@@ -244,8 +339,8 @@ uint8_t BSP_LCD_Init(void)
     hltdc_discovery.Init.AccumulatedActiveH = 391; /* VSYNC width + VBP + Active height - 1 */
     hltdc_discovery.Init.TotalWidth         = 392; /* HSYNC width + HBP + Active width + HFP - 1 */
     hltdc_discovery.Init.TotalHeigh         = 392; /* VSYNC width + VBP + Active height + VFP - 1 */
-    hltdc_discovery.Init.Backcolor.Red      = 255;
-    hltdc_discovery.Init.Backcolor.Green    = 255;
+    hltdc_discovery.Init.Backcolor.Red      = 0;
+    hltdc_discovery.Init.Backcolor.Green    = 0;
     hltdc_discovery.Init.Backcolor.Blue     = 0;
     hltdc_discovery.Init.Backcolor.Reserved = 0xFF;
     if(HAL_LTDC_Init(&hltdc_discovery) != HAL_OK)
@@ -370,10 +465,6 @@ uint8_t BSP_LCD_Init(void)
     // Enable DSI.
      __HAL_DSI_ENABLE(&hdsi_discovery);
 
-     	 /*************************/
-         /* LCD POWER ON SEQUENCE */
-         /*************************/
-
      // Manufacture Command Set Page 0
      HAL_DSI_ShortWrite(&hdsi_discovery, 0, DSI_DCS_SHORT_PKT_WRITE_P1, 0xFE, 0x01);
      HAL_DSI_ShortWrite(&hdsi_discovery, 0, DSI_DCS_SHORT_PKT_WRITE_P1, 0x0A, 0xF0);
@@ -431,17 +522,6 @@ uint8_t BSP_LCD_Init(void)
     HAL_DSI_LongWrite(&hdsi_discovery, 0, DSI_DCS_LONG_PKT_WRITE, 4, DSI_SET_PAGE_ADDRESS, InitParam2);
 
     HAL_Delay(120);
-
-
-    /* Set display on */
-    if(HAL_DSI_ShortWrite(&hdsi_discovery,
-                          0,
-                          DSI_DCS_SHORT_PKT_WRITE_P0,
-                          DSI_SET_DISPLAY_ON,
-                          0x0) != HAL_OK)
-    {
-      return(LCD_ERROR);
-    }
 
 
     /* Enable DSI Wrapper */
@@ -1594,21 +1674,26 @@ void HAL_DSI_EndOfRefreshCallback(DSI_HandleTypeDef *hdsi)
   */
 static void LCD_PowerOn(void)
 {
-		  __HAL_RCC_GPIOB_CLK_ENABLE();
-		  __HAL_RCC_GPIOH_CLK_ENABLE();
 
-		  GPIO_InitTypeDef gpioInit = {0};
+	  GPIO_InitTypeDef gpioInit = {0};
+
+		  __HAL_RCC_GPIOB_CLK_ENABLE();
+		  __HAL_RCC_GPIOC_CLK_ENABLE();
+		  __HAL_RCC_GPIOH_CLK_ENABLE();
+		  __HAL_RCC_GPIOI_CLK_ENABLE();
+		  __HAL_RCC_GPIOG_CLK_ENABLE();
+		  __HAL_RCC_GPIOF_CLK_ENABLE();
 
 		  BSP_IO_ConfigPin(IO_PIN_9, IO_MODE_OUTPUT);
 		  BSP_IO_WritePin(IO_PIN_9, GPIO_PIN_SET);
-
-		  // PB1, DSI_BL_CTRL
-		  gpioInit.Pin       = GPIO_PIN_1;
-		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
-		  gpioInit.Speed     = GPIO_SPEED_FREQ_LOW;
-		  HAL_GPIO_Init(GPIOB, &gpioInit);
-
-		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
+//	HAL_Delay(120);
+//		  // PB1, DSI_BL_CTRL
+//		  gpioInit.Pin       = GPIO_PIN_1;
+//		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
+//		  gpioInit.Speed     = GPIO_SPEED_FREQ_LOW;
+//		  HAL_GPIO_Init(GPIOB, &gpioInit);
+//
+//		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
 
 		  // PB14, LVST1_EN_TS
 		  gpioInit.Pin       = GPIO_PIN_14;
@@ -1626,23 +1711,6 @@ static void LCD_PowerOn(void)
 
 		  HAL_GPIO_WritePin(GPIOH, GPIO_PIN_14, GPIO_PIN_SET);
 
-		 #if 0
-		  // PB13
-		  gpioInit.Pin       = GPIO_PIN_13;
-		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
-		  gpioInit.Speed     = GPIO_SPEED_FREQ_LOW;
-		  HAL_GPIO_Init(GPIOB, &gpioInit);
-
-		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
-
-		  // PB15
-		  gpioInit.Pin       = GPIO_PIN_15;
-		  gpioInit.Mode      = GPIO_MODE_OUTPUT_PP;
-		  gpioInit.Speed     = GPIO_SPEED_FREQ_LOW;
-		  HAL_GPIO_Init(GPIOB, &gpioInit);
-
-		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);
-		#endif
 
 		  HAL_Delay(100);
   /* Configure DSI_RESET and DSI_POWER_ON only if psram is not currently used */
@@ -1696,6 +1764,9 @@ static void LCD_PowerOn(void)
 #else /* USE_STM32L4R9I_DISCO_REVA || USE_STM32L4R9I_DISCO_REVB */
   /* Configure the GPIO connected to DSI_RESET signal */
   BSP_IO_ConfigPin(IO_PIN_10, IO_MODE_OUTPUT);
+//  /* Activate DSI_RESET (active low) */
+//     BSP_IO_WritePin(IO_PIN_10, GPIO_PIN_RESET);
+//     HAL_Delay(50);
   /* Desactivate DSI_RESET */
   BSP_IO_WritePin(IO_PIN_10, GPIO_PIN_SET);
 #endif /* USE_STM32L4R9I_DISCO_REVA || USE_STM32L4R9I_DISCO_REVB */
